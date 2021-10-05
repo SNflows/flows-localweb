@@ -1,0 +1,29 @@
+<html>
+<head>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.4.2/plotly.min.js"></script>
+<script src="https://cdn.rawgit.com/mivion/ephemeris/master/build/ephemeris-0.1.0.min.js"></script>
+
+<script src="observatories.js"></script>
+<script src="visibility_plot.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function(event) {
+
+    let container = "visibility-plot";
+    let name = "2016adj";
+    let [ra, dec] = [201.350458, -43.015972]; // degrees
+
+    var visibility_plot = new VisibilityPlot(container, name, ra, dec);
+
+});
+</script>
+
+<title></title>
+</head>
+<body>
+
+<div id="visibility-plot" style="width: 800px; height: 600px;"></div>
+
+</body>
+</html>

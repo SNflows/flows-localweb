@@ -1,0 +1,137 @@
+{% extends 'index.html' %}
+
+{% block head %}
+<style>
+#photometry, #visibility-plot {
+    width: 1200px;
+    height: 688px;
+}
+.container {
+    position: fixed; top: 0px; left: 0px; z-index: 1000; background-color: rgba(0,0,0,.85); width: 100%; height: 100%; visibility: hidden;
+}
+.center {
+    color: white; font-size: 12px; width: 400px; height: 160px; overflow: hidden; text-align: left; margin: 0; position: absolute; top: 50%; left: 50%; -ms-transform: translate(-50%, -50%); transform: translate(-50%, -50%);
+</style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.4.2/plotly.min.js"></script>
+<script src="https://cdn.rawgit.com/mivion/ephemeris/master/build/ephemeris-0.1.0.min.js"></script>
+
+<script src="{{ target['target_name'] }}/photometry.js"></script>
+
+<script src="observatories.js"></script>
+<script src="{{ url_for('static', filename='vp/visibility_plot.js') }}"></script>
+
+<script>
+
+$(document).ready(function() {
+    var layout = {
+        title: {
+            text: '{{ target['target_name'] }}',
+            font: {
+                size: 20,
+            },
+        },
+        xaxis: {
+            title: 'MJD',
+            tickformat: '.1f',
+        },
+        yaxis: {
+            title: 'Magnitude',
+            autorange: 'reversed',
+        },
+        paper_bgcolor: '#d5d5d5',
+        hovermode:'closest',
+    };
+
+    Plotly.newPlot('photometry', photometry, layout)
+
+    document.getElementById('photometry').on('plotly_click', function(data){
+        var id = "fileid_" + data.points[0].text.slice(8);
+        $('html, body').animate({
+            scrollTop: $("#" + id).offset().top,
+        }, 1000, function(){
+            $("#" + id).animate({
+                backgroundColor: "white",
+            }, 500, function(){
+                $("#" + id).animate({
+                    backgroundColor: "#d5d5d5",
+                }, 500);
+            });
+        });
+    });
+
+    $("div.file").hover(function(){
+        $(this).stop();
+        $(this).css('background-color', 'silver');
+    }, function(){
+        $(this).css('background-color', '#d5d5d5');
+    });
+    $("div.file").click(function(){
+        if ($(this).css("color") == "rgb(176, 0, 0)" && {{ login }}) {
+            document.login.action = '/{{ target['target_name'] }}/' + $(this).attr("id").slice(7)
+            $("#login").css("visibility", "visible")
+        } else {
+            window.location.href = '/{{ target['target_name'] }}/' + $(this).attr("id").slice(7)
+        }
+    });
+
+    let container = "visibility-plot";
+    let name = '{{ target['target_name'] }}';
+    let [ra, dec] = [{{ target['ra'] }}, {{ target['decl'] }}]; // degrees
+
+    var visibility_plot = new VisibilityPlot(container, name, ra, dec);
+});
+</script>
+{% endblock %}
+
+{% block title %}
+<span style="cursor: pointer;" onclick="window.location.href='/';">flows.localweb</span> /
+<span>{{ target['target_name'] }}</span>
+{% endblock %}
+
+{% block body %}
+<div id="login" class="container">
+<div class="center" style="background-color: white; padding: 20px; color: black; font-size: 14px; text-align: center;">
+<form name="login" method="post">
+<div style="text-align: center; font-size: 20px; margin: 10px;">FLOWS website login</div>
+<label for="email" style="display: inline-block; width: 100px; text-align: left;">E-mail</label>
+<input type="email" style="margin: 5px;" name="username" /><br />
+<label for="password" style="display: inline-block; width: 100px; text-align: left;">Password</label>
+<input type="password" style="margin: 5px;" name="password" /><br />
+<input type="submit" style="margin: 5px;" value="Login" onclick="$('#login').css('visibility', 'hidden')" />
+<input type="button" style="margin: 5px;" value="Cancel" onclick="$('#login').css('visibility', 'hidden')" />
+</form>
+</div>
+</div>
+
+<div id='photometry'></div>
+
+<div style="height: 20px;"></div>
+
+<div style="width: 100%; background-color: #d5d5d5; font-weight: bold; font-size: 16px; padding: 5px 0px; display: flex; border-bottom: solid 1px black;">
+<div style="width: 32%; margin: auto 0px;"><div style="margin: auto 10px; margin-left: 20px; overflow: hidden;">File name</div></div>
+<div style="width: 8%; margin: auto 0px;"><div style="margin: auto 10px; overflow: hidden;">File ID</div></div>
+<div style="width: 16%; margin: auto 0px;"><div style="margin: auto 10px; overflow: hidden;">Site</div></div>
+<div style="width: 8%; margin: auto 0px;"><div style="margin: auto 10px; overflow: hidden;">Obstime</div></div>
+<div style="width: 8%; margin: auto 0px;"><div style="margin: auto 10px; overflow: hidden;">Filter</div></div>
+<div style="width: 10%; margin: auto 0px;"><div style="margin: auto 10px; overflow: hidden;">Exp. time</div></div>
+<div style="width: 18%; margin: auto 0px;"><div style="margin: auto 10px; overflow: hidden;">Inserted</div></div>
+</div>
+
+{% for datafile in datafiles %}
+<div id="fileid_{{ datafile['fileid'] }}" class="file" style="width: 100%; background-color: #d5d5d5; padding: 1px 0px; display: flex; border-bottom: solid 1px white; cursor: pointer; color: {% if datafile['has_phot'] %}#000000{% elif datafile['is_local'] %}#b0b000{% else %}#b00000{% endif %};">
+<div style="width: 32%; margin: auto 0px;"><div style="margin: auto 15px; white-space: nowrap; margin-left: 25px; overflow: hidden;">{{ datafile['filename'] }}</div></div>
+<div style="width: 8%; margin: auto 0px;"><div style="margin: auto 15px; white-space: nowrap; overflow: hidden;">{{ datafile['fileid'] }}</div></div>
+<div style="width: 16%; margin: auto 0px;"><div style="margin: auto 15px; white-space: nowrap; overflow: hidden;">{{ datafile['sitename'] }}</div></div>
+<div style="width: 8%; margin: auto 0px;"><div style="margin: auto 15px; white-space: nowrap; overflow: hidden;">{{ datafile['obstime'] }}</div></div>
+<div style="width: 8%; margin: auto 0px;"><div style="margin: auto 15px; white-space: nowrap; overflow: hidden;">{{ datafile['photfilter'] }}</div></div>
+<div style="width: 10%; margin: auto 0px;"><div style="margin: auto 15px; white-space: nowrap; overflow: hidden;">{{ datafile['exptime'] }}</div></div>
+<div style="width: 18%; margin: auto 0px;"><div style="margin: auto 15px; white-space: nowrap; overflow: hidden;">{{ datafile['inserted'] }}</div></div>
+</div>
+{% endfor %}
+
+<div style="height: 20px; background-color: white;"></div>
+
+<div id="visibility-plot"></div>
+
+{% endblock %}
