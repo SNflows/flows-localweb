@@ -104,7 +104,13 @@ $(document).ready(function() {
 </div>
 </div>
 
+<div style="position: relative;">
 <div id='photometry'></div>
+<div style="position: absolute; top: 20px; left: 20px;">
+<button type="submit" onclick="window.open('{{ target['target_name'] }}/photometry.ecsv')">ECSV</button>
+<button type="submit" onclick="window.open('{{ target['target_name'] }}/photometry.snoopy')">SNooPy</button>
+</div>
+</div>
 
 <div style="height: 20px;"></div>
 

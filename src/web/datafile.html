@@ -49,14 +49,14 @@ function loadFits(f) {
     JS9.Load(f, {
         colormap: 'viridis',
         onload: function(im){
-            JS9.AddRegions('circle', {
-                wcs: '{{ photometry[0]['ra'] }} {{ photometry[0]['decl'] }}',
-                color: 'red',
-            });
             scalemin = Quartile(im.raw.data, .0025);
             scalemax = Quartile(im.raw.data, .9975);
             JS9.SetScale('linear', scalemin, scalemax);
             JS9.SetPan({ wcs: '{{ photometry[0]['ra'] }} {{ photometry[0]['decl'] }}' });
+            JS9.AddRegions('circle', {
+                wcs: '{{ photometry[0]['ra'] }} {{ photometry[0]['decl'] }}',
+                color: 'red',
+            });
         },
     });
 }

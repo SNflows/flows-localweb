@@ -18,6 +18,13 @@ var photometry = [
             symbol: 'circle',
         },
         opacity: .8,
+{% elif f[:4] == 'ZTF_' %}
+        marker: {
+            size: 10,
+            symbol: 'diamond',
+        },
+        opacity: .3,
+        visible: 'legendonly',
 {% else %}
         marker: {
             size: 10,

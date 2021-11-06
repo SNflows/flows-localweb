@@ -4,11 +4,16 @@ from base64 import b64encode as b64
 from bs4 import BeautifulSoup
 from pathlib import Path
 from subprocess import Popen, PIPE, STDOUT
+from io import BytesIO, StringIO
+from ast import literal_eval
 
 import numpy as np
 
 from astropy.io import ascii
 from astropy.coordinates import SkyCoord
+from astropy.wcs import WCS
+from astropy.io import fits
+from astropy.table import Table
 
 from flask import Flask, Response, request, render_template
 
@@ -16,6 +21,8 @@ from flows import load_config
 from flows.api import get_targets, get_target
 from flows.api import get_datafiles, get_datafile
 from flows.api import get_all_sites, get_site
+from flows.ztf import download_ztf_photometry
+from flows.coordinatematch import WCS2
 
 from functools import lru_cache
 get_datafile = lru_cache(maxsize=1000)(get_datafile.__wrapped__)
@@ -101,8 +108,8 @@ def target(target):
         datafile['has_phot'] = os.path.isfile(f'{output}/{fileid}/photometry.ecsv')
     return render_template('target.html', target=target, datafiles=datafiles, login={None: "true"}.get(USERNAME, "false"))
 
-@app.route('/<target>/photometry.js')
-def photometry(target):
+@app.route('/<target>/photometry.<format>')
+def photometry(target, format):
     if not (target := get_target_by_name(target)):
         return ''
     output = load_config().get('photometry', 'output', fallback='')
@@ -116,14 +123,44 @@ def photometry(target):
         except FileNotFoundError:
             continue
         filt, mjd = table.meta['photfilter'], table.meta['obstime-bmjd']
+        zp, zp_err = table.meta['zp'], table.meta['zp_error']
         for i in np.where(table['starid'] <= 0)[0]:
             mag, err = table[i]['mag'], table[i]['mag_error']
             _filt = 's_' + filt if table[i]['starid'] else filt
             if not _filt in photometry:
                 photometry[_filt] = []
-            photometry[_filt].append((mjd, mag, err, 'fileid: %d' % int(fileid)))
-    photometry = {filt: list(map(list, zip(*photometry[filt]))) for filt in sorted(photometry)}
-    return render_template('photometry.js', photometry=photometry)
+            photometry[_filt].append((mjd, mag, err, 'fileid: %d' % int(fileid), zp, zp_err))
+
+    if format == "js":
+
+        ztf = download_ztf_photometry(target["target_name"])
+        if ztf:
+            for filt, mjd, mag, err in ztf:
+                _filt = f"ZTF_{filt}"
+                if not _filt in photometry:
+                    photometry[_filt] = []
+                photometry[_filt].append((mjd, mag, err, "", None, None))
+            photometry = {filt: list(map(list, zip(*photometry[filt]))) for filt in sorted(photometry)}
+        return render_template('photometry.js', photometry=photometry)
+
+    elif format == "ecsv":
+
+        photometry = list(zip(*[(mjd, mag, err, zp, zp_err, f) for f in photometry for mjd, mag, err, _, zp, zp_err in photometry[f]]))
+        with StringIO() as fd:
+            Table(photometry, names=("MJD", "mag", "err", "ZP", "ZPerr", "filter")).write(fd, format="ascii.ecsv")
+            fd.seek(0)
+            headers = {"Content-disposition": f"""attachment; filename={target["target_name"]}.ecsv"""}
+            return Response(fd.read(), mimetype="text/ecsv", headers=headers)
+
+    elif format == "snoopy":
+
+        s = f"""{target["target_name"]} {target["redshift"]} {target["ra"]} {target["decl"]}"""
+        for f in photometry:
+            s += f"\nfilter {f}"
+            for mjd, mag, err, _, _, _ in photometry[f]:
+                s += f"\n{mjd} {mag} {err}"
+        headers = {"Content-disposition": f"""attachment; filename={target["target_name"]}.snoopy"""}
+        return Response(s, mimetype="text/snoopy", headers=headers)
 
 @app.route('/observatories.js')
 def observatories():
@@ -190,8 +227,9 @@ def datafile(target, fileid):
     return render_template('datafile.html', target=target, fileid=fileid, photometry=photometry, log=log, images=images)
 
 @app.route('/<target>/<int:fileid>.fits')
-def fits(target, fileid):
+def _fits(target, fileid):
     archive = load_config().get('photometry', 'archive_local', fallback='/')
+    output = load_config().get('photometry', 'output', fallback='')
     try:
         datafile = get_datafile(fileid)
     except:
@@ -203,8 +241,21 @@ def fits(target, fileid):
             return ''
     else:
         path = f'{archive}/' + datafile['path']
-    with open(path, 'rb') as fd:
-        return fd.read()
+    with fits.open(path) as hdul:
+        try:
+            table = ascii.read(f'{output}/%s/{fileid}/photometry.ecsv' % target)
+            wcs = table.meta["used_wcs"]
+        except Exception as e:
+            hdul._file.seek(0)
+            return hdul._file.read()
+        else:
+            wcs = WCS2(*map(literal_eval, map(str.strip, wcs[wcs.index('(')+1:wcs.index(')')].split(',')))).astropy_wcs
+            wcs.wcs.ctype = "RA", "DEC"
+            hdul[0].header.update(wcs.to_header())
+            with BytesIO() as fd:
+                hdul.writeto(fd)
+                fd.seek(0)
+                return fd.read()
 
 @app.route('/<target>/<int:fileid>/run_photometry', methods=['GET'])
 def run_photometry(target, fileid):
